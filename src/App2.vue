@@ -14,8 +14,7 @@
             >
             <el-button @click="handleResume" v-if="status === Status.pause"
             >恢复
-            </el-button
-            >
+            </el-button>
             <el-button
                 v-else
                 :disabled="status !== Status.uploading || !container.hash"
