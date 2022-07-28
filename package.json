@@ -4,7 +4,7 @@
   "description": "large-file-upload",
   "main": "index.js",
   "scripts": {
-    "start": "vue-cli-service serve & nodemon server/index.js"
+    "dev": "vue-cli-service serve"
   },
   "keywords": [
     "upload"

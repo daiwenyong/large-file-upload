@@ -1,12 +1,12 @@
 <template>
     <div>
         <div>
-            {{requestList.length}}
-            <input type="file" @change="handleFileChange" />
+
+            <input type="file" @change="handleFileChange"/>
             <el-button @click="handleUpload">upload</el-button>
 
             <el-button
-                v-if="status === STATUS.uploading || !this.hash"
+                v-if="status === STATUS.uploading || !file"
                 @click="handlePause"
             >
                 暂停
@@ -46,8 +46,8 @@
     </div>
 </template>
 <script>
-import { SIZE, STATUS } from "./config"
-import { postFileService, verifyService, mergeService } from './service'
+import {SIZE, STATUS} from "./config"
+import {postFileService, verifyService, mergeService} from './service'
 
 export default {
     name: 'App',
@@ -71,12 +71,14 @@ export default {
     },
     methods: {
         handlePause() {
+            if (this.status === STATUS.pause) return
             this.status = STATUS.pause
+            console.log(this.requestList, this.requestList.length)
             this.requestList.forEach(i => i.cancel())
         },
         async handleResume() {
             this.status = STATUS.uploading
-            const { uploadedList } = await this.verify()
+            const {uploadedList} = await this.verify()
             this.upload(uploadedList)
         },
         handleFileChange(e) {
@@ -89,9 +91,9 @@ export default {
         calculateHash(chunkList) {
             return new Promise(resolve => {
                 this.worker = new Worker("/hash.js");
-                this.worker.postMessage({ chunkList });
+                this.worker.postMessage({chunkList});
                 this.worker.onmessage = e => {
-                    const { percentage, hash } = e.data;
+                    const {percentage, hash} = e.data;
                     this.hashProgress = percentage;
                     if (hash) {
                         resolve(hash);
@@ -113,46 +115,50 @@ export default {
             const chunkList = this.createFileChunk(this.file)
             this.hash = await this.calculateHash(chunkList)
 
-            const { shouldUpload, uploadedList } = await this.verify()
+            const {shouldUpload, uploadedList} = await this.verify()
 
-            console.log(uploadedList)
-            return
             if (!shouldUpload) {
                 this.$message.success('second upload')
                 return
             }
             // 数据展示
             this.fileData = chunkList.map((chunk, index) => {
+                const hash = this.hash + "-" + index
                 return {
                     fileHash: this.hash,
-                    hash: this.hash + "-" + index,
+                    hash,
                     index,
                     chunk,
                     size: chunk.size,
-                    progress: 0,
-                    cancel: null
+                    progress: uploadedList.includes(hash) ? 100 : 0
                 }
             })
-            this.upload(chunkList)
+            this.upload(uploadedList)
         },
-        async upload(chunkList) {
+        async upload(uploadedList) {
+            let filterUploadList = this.fileData
+            // 过滤之前已经上传
+            if(uploadedList.length){
+                filterUploadList = this.fileData.filter(({hash})=>!uploadedList.includes(hash))
+            }
             // 请求相关
-            // 请求相关
-            this.requestList = chunkList.map((chunk, index) => ({
+            this.requestList = filterUploadList.map((chunk, index) => ({
                 index,
                 cancel: null
             }))
-            const requestList = chunkList.map((chunk, index) => {
+            const requestPromises = filterUploadList.map((chunk, index) => {
                 const formData = this.getFormData(chunk, index)
-                return postFileService.call(this,{
-                    index,
+                return postFileService({
                     data: formData,
                     onDownloadProgress: this.createChunkProgress(this.fileData[index]),
-                    requestList: this.requestList
+                    requestList: this.requestList,
+                    index: index
                 })
             })
-            await Promise.all(requestList)
-            await this.merge()
+            await Promise.all(requestPromises)
+            if(uploadedList.length + filterUploadList.length === this.fileData.length){
+                await this.merge()
+            }
         },
         getFormData(chunk, index) {
             const formData = new FormData()
@@ -169,7 +175,7 @@ export default {
             }
         },
 
-        async verify(filename, fileHash) {
+        async verify() {
             const res = await verifyService({
                 filename: this.file.name,
                 fileHash: this.hash

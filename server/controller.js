@@ -82,6 +82,7 @@ module.exports = class {
         res.end("process file chunk failed");
         return;
       }
+        console.log(files)
       const [chunk] = files.chunk;
       const [hash] = fields.hash;
       const [fileHash] = fields.fileHash;
