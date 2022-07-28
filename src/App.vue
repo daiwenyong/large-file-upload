@@ -1,20 +1,20 @@
 <template>
     <div>
-        <input type="file" @change="handleFileChange"/>
+        <input type="file" @change="handleFileChange" />
         <el-button @click="handleUpload">upload</el-button>
     </div>
 </template>
 <script>
-import {SIZE, STATUS} from "./config"
-import {postFile} from './service'
+import { SIZE, STATUS } from "./config"
+import { postFileService, mergeService } from './service'
 
 export default {
     name: 'App',
     data() {
         return {
-            container: {
-                file: null
-            },
+            file: null,
+            worker: null,
+            hash: null,
             fileData: []
         }
     },
@@ -22,15 +22,15 @@ export default {
         handleFileChange(e) {
             const [file] = e.target.files
             if (!file) return
-            this.container.file = file
+            this.file = file
             this.handleUpload()
         },
         // 生成文件 hash（web-worker）
         calculateHash(chunkList) {
             return new Promise(resolve => {
-                this.container.worker = new Worker("/hash.js");
-                this.container.worker.postMessage({ chunkList });
-                this.container.worker.onmessage = e => {
+                this.worker = new Worker("/hash.js");
+                this.worker.postMessage({ chunkList });
+                this.worker.onmessage = e => {
                     const { percentage, hash } = e.data;
                     this.hashPercentage = percentage;
                     if (hash) {
@@ -40,7 +40,7 @@ export default {
             })
         },
         createFileChunk() {
-            const file = this.container.file
+            const file = this.file
             const res = []
             let idx = 0
             while (idx < file.size) {
@@ -49,25 +49,35 @@ export default {
             return res
         },
         async handleUpload() {
-            if (!this.container.file) return
+            if (!this.file) return
             const chunkList = this.createFileChunk()
-            this.container.hash = await this.calculateHash(chunkList)
+            this.hash = await this.calculateHash(chunkList)
 
-            this.data = chunkList.map(async (file,index)=>{
-                const formData = this.getFormData(file,index)
-                const res = await postFile({
-                    data:formData
+            const requestList = chunkList.map(async (file, index) => {
+                const formData = this.getFormData(file, index)
+                return postFileService({
+                    data: formData
                 })
-                console.log(res)
             })
+            await Promise.all(requestList)
+            await this.merge()
         },
-        getFormData(file,index){
+        getFormData(file, index) {
             const formData = new FormData()
             formData.append("chunk", file);
-            formData.append("hash", this.container.hash + "-" + index);
-            formData.append("filename", this.container.file.name);
-            formData.append("fileHash", this.container.hash)
+            formData.append("hash", this.hash + "-" + index);
+            formData.append("filename", this.file.name);
+            formData.append("fileHash", this.hash)
             return formData
+        },
+        async merge() {
+            await mergeService({
+                size:SIZE,
+                fileHash:this.hash,
+                filename:this.file.name
+            })
+            this.$message.success('upload success')
+
         }
     }
 }

@@ -58,6 +58,7 @@ const createUploadedList = async fileHash =>
 module.exports = class {
   // 合并切片
   async handleMerge(req, res) {
+      debugger
     const data = await resolvePost(req);
     const { fileHash, filename, size } = data;
     const ext = extractExt(filename);
