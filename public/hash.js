@@ -2,7 +2,6 @@ self.importScripts("/spark-md5.min.js") // 导入脚本
 // 生成文件 hash
 self.onmessage = e => {
     const { chunkList } = e.data
-    console.log(chunkList)
     const spark = new self.SparkMD5.ArrayBuffer()
     let percentage = 0
     let count = 0

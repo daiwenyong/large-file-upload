@@ -1,8 +1,7 @@
 <template>
     <div>
         <div>
-            {{requestList.length}}
-            <input type="file" @change="handleFileChange" />
+            <input type="file" @change="handleFileChange"/>
             <el-button @click="handleUpload">upload</el-button>
 
             <el-button
@@ -46,8 +45,8 @@
     </div>
 </template>
 <script>
-import { SIZE, STATUS } from "./config"
-import { postFileService, verifyService, mergeService } from './service'
+import {SIZE, STATUS} from "./config"
+import {postFileService, verifyService, mergeService} from './service'
 
 export default {
     name: 'App',
@@ -76,7 +75,7 @@ export default {
         },
         async handleResume() {
             this.status = STATUS.uploading
-            const { uploadedList } = await this.verify()
+            const {uploadedList} = await this.verify()
             this.upload(uploadedList)
         },
         handleFileChange(e) {
@@ -89,9 +88,9 @@ export default {
         calculateHash(chunkList) {
             return new Promise(resolve => {
                 this.worker = new Worker("/hash.js");
-                this.worker.postMessage({ chunkList });
+                this.worker.postMessage({chunkList});
                 this.worker.onmessage = e => {
-                    const { percentage, hash } = e.data;
+                    const {percentage, hash} = e.data;
                     this.hashProgress = percentage;
                     if (hash) {
                         resolve(hash);
@@ -113,38 +112,40 @@ export default {
             const chunkList = this.createFileChunk(this.file)
             this.hash = await this.calculateHash(chunkList)
 
-            const { shouldUpload, uploadedList } = await this.verify()
-
-            console.log(uploadedList)
-            return
+            const {shouldUpload, uploadedList} = await this.verify()
             if (!shouldUpload) {
                 this.$message.success('second upload')
                 return
             }
             // 数据展示
             this.fileData = chunkList.map((chunk, index) => {
+                const hash = this.hash + "-" + index
                 return {
                     fileHash: this.hash,
-                    hash: this.hash + "-" + index,
+                    hash,
                     index,
                     chunk,
                     size: chunk.size,
-                    progress: 0,
-                    cancel: null
+                    progress: uploadedList.includes(hash) ? 100 : 0
                 }
             })
-            this.upload(chunkList)
+            this.upload(uploadedList)
         },
-        async upload(chunkList) {
+        async upload(uploadedList) {
+            // index 坑
+            let filterUploadList = this.fileData
+            // 过滤之前已经上传
+            if (uploadedList.length) {
+                filterUploadList = this.fileData.filter(({hash}) => !uploadedList.includes(hash))
+            }
             // 请求相关
-            // 请求相关
-            this.requestList = chunkList.map((chunk, index) => ({
-                index,
+            this.requestList = filterUploadList.map(({index}) => ({
+                index: index,
                 cancel: null
             }))
-            const requestList = chunkList.map((chunk, index) => {
+            const requestList = filterUploadList.map(({chunk, index}) => {
                 const formData = this.getFormData(chunk, index)
-                return postFileService.call(this,{
+                return postFileService.call(this, {
                     index,
                     data: formData,
                     onDownloadProgress: this.createChunkProgress(this.fileData[index]),
@@ -169,7 +170,7 @@ export default {
             }
         },
 
-        async verify(filename, fileHash) {
+        async verify() {
             const res = await verifyService({
                 filename: this.file.name,
                 fileHash: this.hash
