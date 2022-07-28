@@ -1,8 +1,23 @@
 <template>
     <div>
-        <input type="file" @change="handleFileChange" />
-        <el-button @click="handleUpload">upload</el-button>
+        <div>
 
+            <input type="file" @change="handleFileChange" />
+            <el-button @click="handleUpload">upload</el-button>
+
+            <el-button
+                v-if="status === STATUS.uploading"
+                @click="handlePause"
+            >
+                暂停
+            </el-button>
+
+            <el-button
+                v-else
+                @click="handleResume">
+                恢复
+            </el-button>
+        </div>
         <div>
             <div>计算文件 hash</div>
             <el-progress :percentage="hashProgress"></el-progress>
@@ -38,12 +53,15 @@ export default {
     name: 'App',
     data() {
         return {
+            STATUS,
             file: null,
             worker: null,
             hash: null,
 
+            requestList: [],
             fileData: [],
-            hashProgress: 0
+            hashProgress: 0,
+            status: STATUS.wait
         }
     },
     filters: {
@@ -52,6 +70,18 @@ export default {
         }
     },
     methods: {
+        handlePause() {
+            this.status = STATUS.pause
+            this.fileData.forEach(i => i.cancel())
+        },
+        async handleResume() {
+            this.status = STATUS.uploading
+            const { uploadedList } = await this.verify(
+                this.container.file.name,
+                this.container.hash
+            )
+            this.upload(uploadedList)
+        },
         handleFileChange(e) {
             const [file] = e.target.files
             if (!file) return
@@ -72,8 +102,7 @@ export default {
                 };
             })
         },
-        createFileChunk() {
-            const file = this.file
+        createFileChunk(file, size = SIZE) {
             const res = []
             let idx = 0
             while (idx < file.size) {
@@ -83,7 +112,8 @@ export default {
         },
         async handleUpload() {
             if (!this.file) return
-            const chunkList = this.createFileChunk()
+            this.status = STATUS.uploading
+            const chunkList = this.createFileChunk(this.file)
             this.hash = await this.calculateHash(chunkList)
 
             const { shouldUpload, uploadedList } = await this.verify(this.file.name, this.hash)
@@ -91,7 +121,6 @@ export default {
                 this.$message.success('second upload')
                 return
             }
-
             // 数据展示
             this.fileData = chunkList.map((chunk, index) => {
                 return {
@@ -100,15 +129,21 @@ export default {
                     index,
                     chunk,
                     size: chunk.size,
-                    progress: 0
+                    progress: 0,
+                    cancel: null
                 }
             })
+            this.upload(chunkList)
+        },
+        async upload(chunkList) {
             // 请求相关
             const requestList = chunkList.map((chunk, index) => {
                 const formData = this.getFormData(chunk, index)
                 return postFileService({
+                    index,
                     data: formData,
-                    onDownloadProgress: this.createChunkProgress(this.fileData[index])
+                    onDownloadProgress: this.createChunkProgress(this.fileData[index]),
+                    request: this.fileData[index]
                 })
             })
             await Promise.all(requestList)

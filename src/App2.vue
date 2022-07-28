@@ -10,8 +10,7 @@
             />
             <el-button @click="handleUpload" :disabled="uploadDisabled"
             >上传
-            </el-button
-            >
+            </el-button>
             <el-button @click="handleResume" v-if="status === Status.pause"
             >恢复
             </el-button>
@@ -20,8 +19,7 @@
                 :disabled="status !== Status.uploading || !container.hash"
                 @click="handlePause"
             >暂停
-            </el-button
-            >
+            </el-button>
         </div>
         <div>
             <div>计算文件 hash</div>

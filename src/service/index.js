@@ -1,15 +1,25 @@
 import axios from "axios"
 
 const url = 'http://localhost:3000'
+const CancelToken = axios.CancelToken
 
-export async function postFileService({ data, onDownloadProgress, requestList }) {
-    const res = await axios({
-        url,
-        data,
-        method: 'post',
-        onDownloadProgress,
-        requestList
+
+export async function postFileService({ data, onDownloadProgress, request }) {
+    const instance = axios.create({
+        baseURL: url
     })
+    // requestList.push(instance)
+    const res = await instance.post(url,{ data,},{
+        // method: 'post',
+
+        onDownloadProgress,
+        cancelToken: new CancelToken(function executor(c) {
+            // executor 函数接收一个 cancel 函数作为参数
+            request.cancel = c;
+        })
+    })
+    // const xhrIndex = requestList.findIndex(item => item === instance)
+    // requestList.splice(xhrIndex, 1)
     return res
 }
 
