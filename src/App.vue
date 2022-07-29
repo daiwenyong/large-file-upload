@@ -7,6 +7,7 @@
             <template v-if="status !== STATUS.wait">
                 <el-button
                     v-if="status === STATUS.uploading || !this.hash"
+                    :disabled="status !== STATUS.uploading"
                     @click="handlePause">
                     pause/暂停
                 </el-button>
@@ -18,9 +19,14 @@
                 </el-button>
             </template>
         </div>
+
         <div>
             <div>计算文件 hash</div>
             <el-progress :percentage="hashProgress"></el-progress>
+        </div>
+        <div>
+            <div>总进度</div>
+            <el-progress :percentage="totalProgress"></el-progress>
         </div>
 
         <el-table :data="fileData">
@@ -47,7 +53,7 @@
 </template>
 <script>
 import { SIZE, STATUS } from "./config"
-import { isFunction,createFileChunk } from "./utils"
+import { isFunction, createFileChunk } from "./utils"
 import { postFileService, verifyService, mergeService } from './service'
 
 export default {
@@ -61,13 +67,29 @@ export default {
 
             requestObj: {},
             fileData: [],
+            status: STATUS.wait,
             hashProgress: 0,
-            status: STATUS.wait
+            totalProgress:0
         }
     },
     filters: {
         transformByte(val) {
-            return Number((val / 1024).toFixed(0));
+            return Number((val / 1024).toFixed(0))
+        }
+    },
+    computed: {
+        a() {
+        }
+    },
+    watch:{
+        fileData:{
+            handler(v){
+                const { file } = this
+                if (!file || !v.length) return 0
+                const sum = v.reduce((pre, next) => pre + next.progress * next.size, 0)
+                this.totalProgress = +(sum / file.size).toFixed(2)
+            },
+            deep:true
         }
     },
     methods: {
@@ -76,6 +98,8 @@ export default {
             Object.values(this.requestObj).forEach(i => {
                 isFunction(i.cancel) && i.cancel()
             })
+            this.requestObj = {}
+            this.worker && (this.worker.onmessage = null)
         },
         async handleResume() {
             this.status = STATUS.uploading
@@ -91,21 +115,25 @@ export default {
         // 生成文件 hash（web-worker）
         calculateHash(chunkList) {
             return new Promise(resolve => {
-                this.worker = new Worker("/hash.js");
-                this.worker.postMessage({ chunkList });
+                this.worker = new Worker("/hash.js")
+                this.worker.postMessage({ chunkList })
                 this.worker.onmessage = e => {
-                    const { percentage, hash } = e.data;
-                    this.hashProgress = percentage;
+                    const { percentage, hash } = e.data
+                    this.hashProgress = +percentage.toFixed(2)
                     if (hash) {
-                        resolve(hash);
+                        resolve(hash)
                     }
-                };
+                }
             })
         },
         async handleUpload() {
             if (!this.file) return
             this.status = STATUS.uploading
-            const chunkList = createFileChunk(this.file,SIZE)
+            this.hashProgress = 0
+            this.totalProgress = 0
+            this.fileData = []
+
+            const chunkList = createFileChunk(this.file, SIZE)
             this.hash = await this.calculateHash(chunkList)
 
             const { shouldUpload, uploadedList } = await this.verify()
@@ -154,15 +182,15 @@ export default {
         },
         getFormData(chunk, index) {
             const formData = new FormData()
-            formData.append("chunk", chunk);
-            formData.append("hash", this.hash + "-" + index);
-            formData.append("filename", this.file.name);
+            formData.append("chunk", chunk)
+            formData.append("hash", this.hash + "-" + index)
+            formData.append("filename", this.file.name)
             formData.append("fileHash", this.hash)
             return formData
         },
         createChunkProgress(chunk) {
             return e => {
-                const p = parseInt(String((e.loaded / e.total) * 100))
+                const p = +((e.loaded / e.total) * 100).toFixed(2)
                 this.$set(chunk, 'progress', p)
             }
         },
